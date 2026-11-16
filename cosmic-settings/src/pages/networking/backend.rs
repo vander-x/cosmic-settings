@@ -789,13 +789,17 @@ async fn select_access_point(
         available_wifi::NetworkType::Open => {
             nm.connect(ssid, interface, WifiSecurity::Open).await?;
         }
-        available_wifi::NetworkType::PskOrSae => {
-            nm.connect(ssid, interface, WifiSecurity::WpaPsk { psk: String::new() })
-                .await?;
-        }
-        available_wifi::NetworkType::Sae | available_wifi::NetworkType::EAP => {
-            let Some(saved) = find_saved_wifi(nm, ssid, interface).await? else {
-                return Err(Error::Message("no saved Wi-Fi connection".to_string()));
+        available_wifi::NetworkType::PskOrSae
+        | available_wifi::NetworkType::Sae
+        | available_wifi::NetworkType::EAP => {
+            let saved = match (find_saved_wifi(nm, ssid, interface).await?, network_type) {
+                (Some(saved), _) => saved,
+                (None, available_wifi::NetworkType::PskOrSae) => {
+                    nm.connect(ssid, interface, WifiSecurity::WpaPsk { psk: String::new() })
+                        .await?;
+                    return Ok(());
+                }
+                (None, _) => return Err(Error::Message("no saved Wi-Fi connection".to_string())),
             };
             let device = saved
                 .interface_name
